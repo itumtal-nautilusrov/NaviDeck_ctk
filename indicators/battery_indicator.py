@@ -1,4 +1,3 @@
-# battery_indicator.py
 import customtkinter as ctk
 from PIL import Image
 import os
@@ -13,8 +12,7 @@ ICONS = [
 
 
 class BatteryIndicator(ctk.CTkFrame):
-
-    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./icons", **kwargs):
+    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./_icons", **kwargs):
         kwargs.setdefault("width", 220)
         kwargs.setdefault("height", 72)
         super().__init__(master, **kwargs)
@@ -73,6 +71,8 @@ class BatteryIndicator(ctk.CTkFrame):
 
     def _build(self):
         self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=3)
+        self.rowconfigure(1, weight=1)
 
         self.icon_lbl = ctk.CTkLabel(self, text="🔋", font=("Arial", 26))
         self.icon_lbl.grid(row=0, column=0, padx=(10, 4), pady=(6, 2), sticky="ns")
