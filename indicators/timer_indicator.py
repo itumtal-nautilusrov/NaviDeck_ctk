@@ -20,7 +20,7 @@ class TimerIndicator(ctk.CTkFrame):
 
         self.timer_label = ctk.CTkLabel(
             self,
-            text="00:00:00",
+            text="00:00,00",
             font=("Arial", 24, "bold")
         )
         self.timer_label.pack(pady=(20, 10))
@@ -96,7 +96,7 @@ class TimerIndicator(ctk.CTkFrame):
         if self.after_id:
             self.after_cancel(self.after_id)
 
-        self.timer_label.configure(text="00:00:00")
+        self.timer_label.configure(text="00:00,00")
 
         self.control_button.configure(
             text="START",
@@ -119,7 +119,7 @@ class TimerIndicator(ctk.CTkFrame):
         seconds = int(total_seconds % 60)
         centiseconds = int((total_seconds * 100) % 100)
 
-        formatted = f"{minutes:02d}:{seconds:02d}:{centiseconds:02d}"
+        formatted = f"{minutes:02d}:{seconds:02d},{centiseconds:02d}"
 
         self.timer_label.configure(text=formatted)
 
