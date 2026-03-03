@@ -12,7 +12,7 @@ ICONS = [
 
 
 class BatteryIndicator(ctk.CTkFrame):
-    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./_icons", **kwargs):
+    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./_icons/main", **kwargs):
         kwargs.setdefault("width", 220)
         kwargs.setdefault("height", 72)
         super().__init__(master, **kwargs)

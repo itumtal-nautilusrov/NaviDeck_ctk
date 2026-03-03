@@ -31,7 +31,7 @@ class WarningIndicator(ctk.CTkFrame):
         **kwargs,
     ):
         kwargs.setdefault("width", 340)
-        kwargs.setdefault("height", 72)
+        kwargs.setdefault("height", 65)
         kwargs.setdefault("corner_radius", 6)
         super().__init__(master, **kwargs)
         self.grid_propagate(False)
