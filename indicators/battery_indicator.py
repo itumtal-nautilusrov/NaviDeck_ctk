@@ -12,15 +12,16 @@ ICONS = [
 
 
 class BatteryIndicator(ctk.CTkFrame):
-    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./_icons/main", **kwargs):
+    def __init__(self, master, battery_percent=100, minutes_left=0, icons_dir="./_icons/main", language="English", **kwargs):
         kwargs.setdefault("width", 220)
         kwargs.setdefault("height", 72)
         super().__init__(master, **kwargs)
         self.grid_propagate(False)
 
-        self.percent = battery_percent
-        self.minutes = minutes_left
-        self.icons  = self._load_icons(icons_dir)
+        self.percent  = battery_percent
+        self.minutes  = minutes_left
+        self.language = language
+        self.icons    = self._load_icons(icons_dir)
 
         self._build()
         self.update(battery_percent, minutes_left)
@@ -35,6 +36,10 @@ class BatteryIndicator(ctk.CTkFrame):
 
     def set_minutes(self, minutes_left):
         self.update(self.percent, minutes_left)
+
+    def set_language(self, language):
+        self.language = language
+        self._refresh()
 
     def update(self, percent, minutes_left):
         self.percent = max(0.0, min(100.0, float(percent)))
@@ -67,7 +72,10 @@ class BatteryIndicator(ctk.CTkFrame):
         if not self.minutes:
             return ""
         h, m = divmod(self.minutes, 60)
-        return f"· {h}s {m}dk" if h else f"· {m}dk"
+        if self.language == "Türkçe":
+            return f"· {h}s {m}dk" if h else f"· {m}dk"
+        else:
+            return f"· {h}h {m}m" if h else f"· {m}m"
 
     def _build(self):
         self.columnconfigure(1, weight=1)
@@ -98,7 +106,8 @@ class BatteryIndicator(ctk.CTkFrame):
         else:
             self.icon_lbl.configure(image=None, text="🔋")
 
-        self.pct_lbl.configure(text=f"%{self.percent:.0f}", text_color=color)
+        pct_text = f"%{self.percent:.0f}" if self.language == "Türkçe" else f"{self.percent:.0f}%"
+        self.pct_lbl.configure(text=pct_text, text_color=color)
         self.min_lbl.configure(text=self._time_str())
         self.bar.configure(progress_color=color)
         self.bar.set(self.percent / 100)
@@ -119,7 +128,7 @@ if __name__ == "__main__":
     ctrl = ctk.CTkFrame(app, fg_color="transparent")
     ctrl.pack(padx=20, fill="x")
 
-    pct = ctk.StringVar(value="78")
+    pct  = ctk.StringVar(value="78")
     mins = ctk.StringVar(value="95")
 
     row = ctk.CTkFrame(ctrl, fg_color="transparent")

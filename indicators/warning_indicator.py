@@ -17,6 +17,20 @@ COLOR = {
     3: "#c31212",  # red
 }
 
+# ── Warning messages ──────────────────────────────────────────────────────────
+WARNINGS = {
+    # level 1
+    "flawless":         (1, "Flawless",                    "Kusursuz"),
+    "autonomous":       (1, "Autonomous mode",             "Otonom mod"),
+    # level 2
+    "low_battery":      (2, "Battery charge under 25%",    "Batarya şarjı %25'in altında"),
+    "imu_not_cal":      (2, "IMU is not calibrated",       "IMU kalibre edilmedi"),
+    # level 3
+    "water_leak":       (3, "WATER LEAKING",               "SU SIZINTISI"),
+}
+# (level, english_text, turkish_text)
+
+
 FLASH_ON  = "#c31212"
 FLASH_OFF = "#6b0000"
 
@@ -25,8 +39,10 @@ class WarningIndicator(ctk.CTkFrame):
     def __init__(
         self,
         master,
+        warning_key=None,
         text="Warning",
         level=2,
+        language="English",
         sound="./_sounds/warning.mp3",
         **kwargs,
     ):
@@ -37,29 +53,51 @@ class WarningIndicator(ctk.CTkFrame):
         self.grid_propagate(False)
         self.pack_propagate(False)
 
-        self.text  = text
-        self.level = level
-        self.sound = sound
+        self.language     = language
+        self.warning_key  = warning_key
+        self.sound        = sound
 
-        self._flashing    = False
-        self._flash_state = True
-        self._flash_job   = None
+        self._flashing     = False
+        self._flash_state  = True
+        self._flash_job    = None
         self._sound_thread = None
 
+        if warning_key and warning_key in WARNINGS:
+            lvl, en, tr = WARNINGS[warning_key]
+            self.level = lvl
+            self.text  = en if language == "English" else tr
+        else:
+            self.text  = text
+            self.level = level
+
         self._build()
-        self.update(text, level)
+        self._refresh()
 
     # ── public ────────────────────────────────────────────────────────────────
 
-    def set_warning(self, text, level):
-        self.update(text, level)
+    def set_language(self, language):
+        self.language = language
+        if self.warning_key and self.warning_key in WARNINGS:
+            lvl, en, tr = WARNINGS[self.warning_key]
+            self.text = en if language == "English" else tr
+            self.text_lbl.configure(text=self.text)
+
+    def set_warning(self, warning_key):
+        if warning_key not in WARNINGS:
+            return
+        self.warning_key = warning_key
+        lvl, en, tr = WARNINGS[warning_key]
+        self.level = lvl
+        self.text  = en if self.language == "English" else tr
+        self.text_lbl.configure(text=self.text)
+        self._refresh()
 
     def update(self, text=None, level=None):
         if text is not None:
             self.text = text
+            self.warning_key = None
         if level is not None:
             self.level = max(1, min(3, int(level)))
-
         self.text_lbl.configure(text=self.text)
         self._refresh()
 
@@ -101,8 +139,7 @@ class WarningIndicator(ctk.CTkFrame):
             anchor="w",
             wraplength=240,
         )
-        col = 0
-        self.text_lbl.grid(row=0, column=col, padx=10, sticky="ew")
+        self.text_lbl.grid(row=0, column=0, padx=10, sticky="ew")
 
     def _refresh(self):
         color = self._color()
@@ -123,7 +160,7 @@ class WarningIndicator(ctk.CTkFrame):
         r, g, b = int(r * 0.7), int(g * 0.7), int(b * 0.7)
         return f"#{r:02x}{g:02x}{b:02x}"
 
-    # ── Flash ──────────────────────────────────────────────────────────────────
+    # ── Flash ─────────────────────────────────────────────────────────────────
 
     def _start_flash(self):
         if not self._flashing:
@@ -148,7 +185,7 @@ class WarningIndicator(ctk.CTkFrame):
         self._flash_state = not self._flash_state
         self._flash_job = self.after(400, self._do_flash)
 
-    # ── Sound ──────────────────────────────────────────────────────────────────
+    # ── Sound ─────────────────────────────────────────────────────────────────
 
     def _play_sound(self):
         if not os.path.exists(self.sound):
@@ -164,44 +201,52 @@ class WarningIndicator(ctk.CTkFrame):
                 pygame.mixer.music.load(self.sound)
                 pygame.mixer.music.play(-1)
             else:
-                # Windows
                 if sys.platform == "win32":
                     import winsound
                     winsound.PlaySound(self.sound, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
-                # Linux
                 elif sys.platform.startswith("linux"):
                     subprocess.Popen(["aplay", "-l", self.sound],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                # macOS
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 elif sys.platform == "darwin":
                     subprocess.Popen(["afplay", "-t", "0", self.sound])
         except Exception as e:
             print(f"[WarningIndicator] Ses çalınamadı: {e}")
 
 
-# ── Demo ───────────────────────────────────────────────────────────────────────
+# ── Demo ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     ctk.set_appearance_mode("dark")
     app = ctk.CTk()
     app.title("Warning Indicator Demo")
-    app.geometry("420x280")
+    app.geometry("420x340")
 
     frame = ctk.CTkFrame(app)
     frame.pack(expand=True, fill="both", padx=20, pady=20)
 
-    w1 = WarningIndicator(frame, text="All systems nominal.", level=1)
+    lang = "English"
+
+    w1 = WarningIndicator(frame, warning_key="flawless",   language=lang)
     w1.pack(pady=8)
 
-    w2 = WarningIndicator(frame, text="Heavy Wind Velocity. Fly with caution.", level=2)
+    w2 = WarningIndicator(frame, warning_key="low_battery", language=lang)
     w2.pack(pady=8)
 
-    w3 = WarningIndicator(frame, text="CRITICAL: Return to home immediately!", level=3)
+    w3 = WarningIndicator(frame, warning_key="water_leak",  language=lang)
     w3.pack(pady=8)
 
-    def cycle():
-        current = w2.level
-        w2.update(level=(current % 3) + 1)
+    def toggle_lang():
+        global lang
+        lang = "Türkçe" if lang == "English" else "English"
+        for w in (w1, w2, w3):
+            w.set_language(lang)
 
-    ctk.CTkButton(frame, text="Cycle Level (w2)", command=cycle).pack(pady=8)
+    ctk.CTkButton(frame, text="Toggle Language", command=toggle_lang).pack(pady=8)
+
+    def cycle():
+        keys = list(WARNINGS.keys())
+        idx  = keys.index(w2.warning_key) if w2.warning_key in keys else 0
+        w2.set_warning(keys[(idx + 1) % len(keys)])
+
+    ctk.CTkButton(frame, text="Cycle Warning (w2)", command=cycle).pack(pady=4)
 
     app.mainloop()

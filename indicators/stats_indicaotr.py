@@ -2,78 +2,65 @@ import cv2 as cv
 import numpy as np
 import math
 
-def draw_stats(roll, depth, speed, width=1280, height=720):
-    frame = np.zeros((height, width, 3), dtype=np.uint8)
+class StatsIndicator():
+    def __init__(self):
+        pass
 
-    hud_color = (0, 255, 0)
-    center = (width // 2, height // 2)
+    def draw_roll(self, frame, roll=0):
+        h, w = frame.shape[:2]
 
-    # =======================
-    # 🎡 ROLL LINE
-    # =======================
-    length = 400
-    angle = math.radians(roll)
+        cx = w // 2
+        cy = h // 4
 
-    x1 = int(center[0] - length * math.cos(angle))
-    y1 = int(center[1] - length * math.sin(angle))
-    x2 = int(center[0] + length * math.cos(angle))
-    y2 = int(center[1] + length * math.sin(angle))
+        line_length = 570
+        gap = 50
 
-    cv.line(frame, (x1, y1), (x2, y2), hud_color, 2)
-    cv.circle(frame, center, 6, hud_color, -1)
+        roll_rad = math.radians(roll)
 
-    cv.putText(frame, f"ROLL {roll:.1f}",
-               (center[0]-70, center[1]+50),
-               cv.FONT_HERSHEY_SIMPLEX, 0.7, hud_color, 2)
+        dx = math.cos(roll_rad)
+        dy = math.sin(roll_rad)
 
-    # =======================
-    # 📏 DEPTH SCALE (LEFT)
-    # =======================
-    top = 150
-    bottom = height - 150
-    x_pos = 120
+        half_len = line_length / 2
+        half_gap = gap / 3
 
-    cv.line(frame, (x_pos, top), (x_pos, bottom), hud_color, 2)
+        # Sol çizgi
+        x1 = int(cx - half_len * dx)
+        y1 = int(cy - half_len * dy)
 
-    max_depth = 100  # ayarlayabilirsin
-    depth = np.clip(depth, 0, max_depth)
+        x2 = int(cx - half_gap * dx)
+        y2 = int(cy - half_gap * dy)
 
-    for d in range(0, max_depth+1, 10):
-        y = bottom - int((d/max_depth)*(bottom-top))
-        cv.line(frame, (x_pos-10, y), (x_pos+10, y), hud_color, 1)
-        cv.putText(frame, str(d),
-                   (x_pos-60, y+5),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.5,
-                   hud_color, 1)
+        cv.line(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
-    y_depth = bottom - int((depth/max_depth)*(bottom-top))
-    cv.circle(frame, (x_pos, y_depth), 8, (0,0,255), -1)
+        # Sağ çizgi
+        x3 = int(cx + half_gap * dx)
+        y3 = int(cy + half_gap * dy)
 
-    cv.putText(frame, f"{depth:.1f} m",
-               (x_pos-40, bottom+40),
-               cv.FONT_HERSHEY_SIMPLEX, 0.7,
-               hud_color, 2)
+        x4 = int(cx + half_len * dx)
+        y4 = int(cy + half_len * dy)
 
-    # =======================
-    # 🚤 SPEED BOX (RIGHT)
-    # =======================
-    box_x1 = width - 300
-    box_y1 = 100
-    box_x2 = width - 80
-    box_y2 = 180
+        cv.line(frame, (x3, y3), (x4, y4), (0, 255, 0), 2)
 
-    cv.rectangle(frame, (box_x1, box_y1),
-                 (box_x2, box_y2),
-                 hud_color, 2)
+        return frame
 
-    cv.putText(frame, f"SPD",
-               (box_x1+20, box_y1+35),
-               cv.FONT_HERSHEY_SIMPLEX, 0.6,
-               hud_color, 1)
+    
+if __name__ == "__main__":
+    indicator = StatsIndicator()
 
-    cv.putText(frame, f"{speed:.2f} m/s",
-               (box_x1+20, box_y1+80),
-               cv.FONT_HERSHEY_SIMPLEX, 0.8,
-               hud_color, 2)
+    roll = 0
 
-    return frame
+    while True:
+        frame = np.zeros((600, 800, 3), dtype=np.uint8)
+
+        frame = indicator.draw_roll(frame, roll=roll)
+
+        cv.imshow("Roll Indicator", frame)
+
+        roll += 1
+        if roll > 360:
+            roll = 0
+
+        if cv.waitKey(20) & 0xFF == 27:
+            break
+
+    cv.destroyAllWindows()
