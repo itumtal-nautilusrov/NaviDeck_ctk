@@ -39,12 +39,12 @@ class NaviDeck(ctk.CTk):
         self.attributes("-fullscreen", True)
 
         self.stats = StatsIndicator()
-        self.roll  = 9
-        self.depht = -10
+        self.roll  = 0
+        self.depht = 0
 
 # _____ TOP BAR ___________________________________
 
-        self.top_bar = ctk.CTkFrame(self, height=85, fg_color="#000000", corner_radius=0)
+        self.top_bar = ctk.CTkFrame(self, height=115, fg_color="#0f0f14", corner_radius=0)
         self.top_bar.pack(anchor="n", fill="x")
 
         self.more_img = ctk.CTkImage(
@@ -61,11 +61,11 @@ class NaviDeck(ctk.CTk):
             hover=False,
             command=self.open_settings
         )
-        self.more_button.pack(side="right", padx=20, pady=12)
+        self.more_button.pack(side="right", padx=20, pady=20)
         self.more_button.bind("<Enter>", lambda e: self.config(cursor="hand2"))
         self.more_button.bind("<Leave>", lambda e: self.config(cursor=""))
 
-        ctk.CTkFrame(self.top_bar, fg_color="#393939", height=70, width=2).pack(side="right", padx=5, pady=5)
+        ctk.CTkFrame(self.top_bar, fg_color="#393939", height=70, width=2).pack(side="right", padx=5, pady=22)
 
         self.battery = BatteryIndicator(
             self.top_bar,
@@ -78,7 +78,7 @@ class NaviDeck(ctk.CTk):
             border_color="#3a3a3a",
             corner_radius=12,
         )
-        self.battery.pack(side="right", anchor="center", padx=20, pady=12)
+        self.battery.pack(side="right", anchor="center", padx=20, pady=22)
 
         self.warning = WarningIndicator(
             self.top_bar,
@@ -86,7 +86,7 @@ class NaviDeck(ctk.CTk):
             language=self.language,
             corner_radius=12
         )
-        self.warning.pack(side="left", anchor="center", padx=20, pady=12)
+        self.warning.pack(side="left", anchor="center", padx=20, pady=25)
 
 # _____ MAIN FRAME ___________________________________
 
@@ -98,24 +98,26 @@ class NaviDeck(ctk.CTk):
         self.curr_footage = "N25"
         self.footage_buttons = {}
 
-        self.right_bar = ctk.CTkFrame(self.main_frame, width=320, fg_color="#000000", corner_radius=0)
+        self.right_bar = ctk.CTkFrame(self.main_frame, width=206, fg_color="#0f0f14", corner_radius=0)
         self.right_bar.pack(side="right", fill="y")
         self.right_bar.pack_propagate(False)
 
-        ctk.CTkFrame(self.right_bar, fg_color="#393939", height=2, width=280).pack(side="top", pady=5)
+        ctk.CTkFrame(self.right_bar, fg_color="#393939", height=2, width=186).pack(side="top")
 
         self.clock_lbl = ctk.CTkLabel(self.right_bar, text="00:00", font=("Arial", 27, "bold"))
-        self.clock_lbl.pack(side="top", pady=7)
+        self.clock_lbl.pack(side="top", pady=10)
 
         self.timer = TimerIndicator(
             self.right_bar,
             language=self.language,
-            corner_radius=12,
-            border_width=2,
+            corner_radius=0,
+            border_width=0,
             border_color="#393939",
-            fg_color="#171616"
+            fg_color="transparent"
         )
         self.timer.pack(side="top", pady=10)
+
+        ctk.CTkFrame(self.right_bar, fg_color="#393939", height=2, width=186).pack(side="top", pady=5)        
 
         # Mini ROV
         self.footage_btn2 = ctk.CTkButton(
@@ -124,8 +126,8 @@ class NaviDeck(ctk.CTk):
             font=("Arial", 20, "bold"),
             fg_color="#171616",
             hover=False,
-            width=270, height=150,
-            corner_radius=13,
+            width=186, height=120,
+            corner_radius=10,
             border_width=3,
             border_color="#00FFAA" if self.curr_footage == "Mini ROV" else "#393939",
             command=lambda: self.select_footage("Mini ROV")
@@ -139,8 +141,8 @@ class NaviDeck(ctk.CTk):
             font=("Arial", 20, "bold"),
             fg_color="#171616",
             hover=False,
-            width=270, height=150,
-            corner_radius=13,
+            width=186, height=120,
+            corner_radius=10,
             border_width=3,
             border_color="#00FFAA" if self.curr_footage == "N25" else "#393939",
             command=lambda: self.select_footage("N25")
@@ -152,12 +154,12 @@ class NaviDeck(ctk.CTk):
             text=f"{self._s('selected')}: {self.curr_footage}",
             font=("Arial", 20, "bold")
         )
-        self.footage_lbl.pack(side="bottom", pady=5, padx=25, anchor="w")
+        self.footage_lbl.pack(side="bottom", pady=5, padx=10, anchor="w")
 
         self.footage_buttons["Mini ROV"] = self.footage_btn2
         self.footage_buttons["N25"]      = self.footage_btn1
 
-        ctk.CTkFrame(self.right_bar, fg_color="#393939", width=280, height=2).pack(side="bottom", pady=10)
+        ctk.CTkFrame(self.right_bar, fg_color="#393939", width=186, height=2).pack(side="bottom", pady=10)
 
 # _____ CAM FRAME ___________________________________
 
@@ -180,13 +182,15 @@ class NaviDeck(ctk.CTk):
         if not self.cam_running:
             self.cam_label.configure(image=self.no_cam_img)
         else:
-            frame = cv.imread("./_footage/3.webp")
+            frame = cv.imread("./_footage/1080p.png")
+            self.roll = 2
             frame = self.stats.draw_roll(frame, self.roll)
             self.after(50, lambda: self.update_footage(frame))
 
 # _____ LAST CALLS ___________________________________
 
         self.update_clock()
+        self.control_warnings()
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -213,6 +217,12 @@ class NaviDeck(ctk.CTk):
             text=f"{self._s('selected')}: {self.curr_footage}"
         )
 
+    # ─── Warning ────────────────────────────────────────────────────────────
+
+    def control_warnings(self):
+        if self.battery.percent <= 25:
+            self.warning.set_warning("low_battery")
+       
     # ─── Settings ────────────────────────────────────────────────────────────
 
     def open_settings(self):
@@ -246,6 +256,7 @@ class NaviDeck(ctk.CTk):
         frame_h, frame_w = frame.shape[:2]
         display_w = self.cam_frame.winfo_width()
         display_h = self.cam_frame.winfo_height()
+        print(f"w {display_w} | h {display_h}")
 
         if display_w < 10 or display_h < 10:
             self.after(50, lambda: self.update_footage(frame))
@@ -254,6 +265,7 @@ class NaviDeck(ctk.CTk):
         scale  = min(display_w / frame_w, display_h / frame_h)
         new_w  = int(frame_w * scale)
         new_h  = int(frame_h * scale)
+        print(f"w {new_w} | h {new_h}")
 
         resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
         resized = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
