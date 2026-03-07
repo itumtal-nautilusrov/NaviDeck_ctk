@@ -21,7 +21,7 @@ LANGUAGES = {
         "map":      "Harita",
         "media":    "Medya",
         "sound":    "Ses",
-        "credits":  "Krediler",
+        "credits":  "Katkıda Bulunanlar",
         "language_title": "Dil",
         "language_subtitle": "Uygulamanın görüntüleme dilini seçin.",
     },
@@ -166,6 +166,9 @@ class SettingsPanel(ctk.CTkFrame):
                 command=lambda l=lang: self._change_language(l)
             )
             btn.pack(side="left", padx=8, pady=8)
+
+    def _show_camera(self):
+        ...
 
     def _show_placeholder(self, key):
         self._clear_main()

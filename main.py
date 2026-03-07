@@ -6,7 +6,8 @@ import datetime
 from indicators.battery_indicator import BatteryIndicator
 from indicators.warning_indicator import WarningIndicator
 from indicators.timer_indicator import TimerIndicator
-from indicators.stats_indicaotr import StatsIndicator
+from indicators.hud_indicator import HUDIndicator
+from indicators.stats_indicator import StatsIndicator
 
 from settings import SettingsPanel, LANGUAGES
 
@@ -17,13 +18,11 @@ LANGUAGES["English"].update({
     "selected":    "Selected",
     "footage1":    "Footage 1\nN25",
     "footage2":    "Footage 2\nMini ROV",
-    "low_battery": "Low Battery",
 })
 LANGUAGES["Türkçe"].update({
     "selected":    "Seçili",
     "footage1":    "Görüntü 1\nN25",
     "footage2":    "Görüntü 2\nMini ROV",
-    "low_battery": "Düşük Batarya",
 })
 
 
@@ -38,9 +37,13 @@ class NaviDeck(ctk.CTk):
         self.geometry("1920x1080")
         self.attributes("-fullscreen", True)
 
-        self.stats = StatsIndicator()
-        self.roll  = 0
+        self.stats = HUDIndicator()
+        self.coords = 0
         self.depht = 0
+        self.velocity = 0
+        self.yaw = 0
+        self.roll  = -3
+        self.pitch = 0
 
 # _____ TOP BAR ___________________________________
 
@@ -154,12 +157,27 @@ class NaviDeck(ctk.CTk):
             text=f"{self._s('selected')}: {self.curr_footage}",
             font=("Arial", 20, "bold")
         )
-        self.footage_lbl.pack(side="bottom", pady=5, padx=10, anchor="w")
+        self.footage_lbl.pack(side="bottom", pady=7, padx=10, anchor="w")
 
         self.footage_buttons["Mini ROV"] = self.footage_btn2
         self.footage_buttons["N25"]      = self.footage_btn1
 
-        ctk.CTkFrame(self.right_bar, fg_color="#393939", width=186, height=2).pack(side="bottom", pady=10)
+        ctk.CTkFrame(self.right_bar, fg_color="#393939", width=186, height=2).pack(side="bottom", pady=5)
+
+        self.velocity_card = StatsIndicator(self.right_bar, label="VELOCITY", value=self.velocity, unit="m/s", language=self.language)
+        self.velocity_card.pack(anchor="center", pady=9)
+
+        self.depht_card = StatsIndicator(self.right_bar, label="DEPHT", value=self.depht, unit="m", language=self.language)
+        self.depht_card.pack(anchor="center", pady=5)
+
+        self.yaw_card = StatsIndicator(self.right_bar, label="YAW", value=self.yaw, unit="°", language=self.language)
+        self.yaw_card.pack(anchor="center", pady=5)
+
+        self.roll_card = StatsIndicator(self.right_bar, label="ROLL", value=self.roll, unit="°", language=self.language)
+        self.roll_card.pack(anchor="center", pady=5)
+
+        self.pitch_card = StatsIndicator(self.right_bar, label="PITCH", value=self.pitch, unit="°", language=self.language)
+        self.pitch_card.pack(anchor="center", pady=5)
 
 # _____ CAM FRAME ___________________________________
 
@@ -182,9 +200,7 @@ class NaviDeck(ctk.CTk):
         if not self.cam_running:
             self.cam_label.configure(image=self.no_cam_img)
         else:
-            frame = cv.imread("./_footage/1080p.png")
-            self.roll = 2
-            frame = self.stats.draw_roll(frame, self.roll)
+            frame = cv.imread("./_footage/3.webp")
             self.after(50, lambda: self.update_footage(frame))
 
 # _____ LAST CALLS ___________________________________
@@ -208,14 +224,18 @@ class NaviDeck(ctk.CTk):
         self.open_settings()
 
     def _refresh_ui_labels(self):
+        print(f"Refreshing UI with language: {self.language}")
         self.warning.set_language(self.language)
         self.battery.set_language(self.language)
         self.timer.set_language(self.language)
+
         self.footage_btn1.configure(text=self._s("footage1"))
         self.footage_btn2.configure(text=self._s("footage2"))
-        self.footage_lbl.configure(
-            text=f"{self._s('selected')}: {self.curr_footage}"
-        )
+        self.footage_lbl.configure(text=f"{self._s('selected')}: {self.curr_footage}")
+
+        all_cards = [self.velocity_card, self.depht_card, self.yaw_card, self.roll_card, self.pitch_card]
+        for card in all_cards:
+            card.set_language(self.language)
 
     # ─── Warning ────────────────────────────────────────────────────────────
 
@@ -256,20 +276,22 @@ class NaviDeck(ctk.CTk):
         frame_h, frame_w = frame.shape[:2]
         display_w = self.cam_frame.winfo_width()
         display_h = self.cam_frame.winfo_height()
-        print(f"w {display_w} | h {display_h}")
 
         if display_w < 10 or display_h < 10:
             self.after(50, lambda: self.update_footage(frame))
             return
 
-        scale  = min(display_w / frame_w, display_h / frame_h)
-        new_w  = int(frame_w * scale)
-        new_h  = int(frame_h * scale)
-        print(f"w {new_w} | h {new_h}")
+        # 1) Önce frame'i resize et
+        scale = min(display_w / frame_w, display_h / frame_h)
+        new_w = int(frame_w * scale)
+        new_h = int(frame_h * scale)
 
         resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
-        resized = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
 
+        # 2) Sonra HUD'u resize edilmiş frame üzerine çiz
+        resized = self.stats.draw_roll(resized, self.roll)
+
+        resized = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
         img     = Image.fromarray(resized)
         ctk_img = ctk.CTkImage(light_image=img, size=(new_w, new_h))
 

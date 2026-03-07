@@ -2,7 +2,7 @@ import cv2 as cv
 import numpy as np
 import math
 
-class StatsIndicator():
+class HUDIndicator():
     def __init__(self):
         self.roll_img = cv.imread("./_hud/roll.png", cv.IMREAD_UNCHANGED)
         if self.roll_img is None:
@@ -74,7 +74,7 @@ class StatsIndicator():
 
 
 if __name__ == "__main__":
-    indicator = StatsIndicator()
+    indicator = HUDIndicator()
     roll = 0
 
     while True:
