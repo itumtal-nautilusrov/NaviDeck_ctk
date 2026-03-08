@@ -27,6 +27,8 @@ LANGUAGES = {
     },
 }
 
+RESOLUTIONS = ["4K", "1080p", "720p", "480p"]
+
 
 class SettingsPanel(ctk.CTkFrame):
 
