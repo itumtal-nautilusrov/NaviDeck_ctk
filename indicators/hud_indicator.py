@@ -66,7 +66,7 @@ class HUDIndicator():
     def draw_roll(self, frame, roll=0):
         h, w = frame.shape[:2]
         cx = w // 2
-        cy = h // 4
+        cy = (h // 5)*2
 
         rotated = self.rotate_image(self.roll_img, roll)
         frame = self.overlay_transparent(frame, rotated, cx, cy)
