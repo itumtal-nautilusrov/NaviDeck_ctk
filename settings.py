@@ -1,6 +1,7 @@
 import customtkinter as ctk
 from PIL import Image
-
+import tkintermapview
+import tkintermapview
 
 LANGUAGES = {
     "English": {
@@ -171,6 +172,7 @@ class SettingsPanel(ctk.CTkFrame):
 
     def _show_camera(self):
         ...
+
 
     def _show_placeholder(self, key):
         self._clear_main()

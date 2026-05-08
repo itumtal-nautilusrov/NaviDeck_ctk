@@ -8,6 +8,8 @@ from indicators.warning_indicator import WarningIndicator
 from indicators.timer_indicator import TimerIndicator
 from indicators.hud_indicator import HUDIndicator
 from indicators.stats_indicator import StatsIndicator
+from indicators.cam_indicator import CameraSelector
+from indicators.map_indicator import MiniMapIndicator
 
 from settings import SettingsPanel, LANGUAGES
 
@@ -31,6 +33,7 @@ class NaviDeck(ctk.CTk):
         super().__init__()
 
         self.language = "Türkçe"   # LANG
+        self.cams = ["Sarıca", "Mini ROV"]
 
         self.iconbitmap("./_icons/main/nrt_logo.ico")
         self.title("NaviDeck")
@@ -122,46 +125,6 @@ class NaviDeck(ctk.CTk):
 
         ctk.CTkFrame(self.right_bar, fg_color="#393939", height=2, width=186).pack(side="top", pady=5)        
 
-        # Mini ROV
-        self.footage_btn2 = ctk.CTkButton(
-            self.right_bar,
-            text=self._s("footage2"),
-            font=("Arial", 20, "bold"),
-            fg_color="#171616",
-            hover=False,
-            width=186, height=120,
-            corner_radius=10,
-            border_width=3,
-            border_color="#00FFAA" if self.curr_footage == "Mini ROV" else "#393939",
-            command=lambda: self.select_footage("Mini ROV")
-        )
-        self.footage_btn2.pack(side="bottom", pady=15)
-
-        # N25
-        self.footage_btn1 = ctk.CTkButton(
-            self.right_bar,
-            text=self._s("footage1"),
-            font=("Arial", 20, "bold"),
-            fg_color="#171616",
-            hover=False,
-            width=186, height=120,
-            corner_radius=10,
-            border_width=3,
-            border_color="#00FFAA" if self.curr_footage == "N25" else "#393939",
-            command=lambda: self.select_footage("N25")
-        )
-        self.footage_btn1.pack(side="bottom", pady=7)
-
-        self.footage_lbl = ctk.CTkLabel(
-            self.right_bar,
-            text=f"{self._s('selected')}: {self.curr_footage}",
-            font=("Arial", 20, "bold")
-        )
-        self.footage_lbl.pack(side="bottom", pady=7, padx=10, anchor="w")
-
-        self.footage_buttons["Mini ROV"] = self.footage_btn2
-        self.footage_buttons["N25"]      = self.footage_btn1
-
         ctk.CTkFrame(self.right_bar, fg_color="#393939", width=186, height=2).pack(side="bottom", pady=5)
 
         self.velocity_card = StatsIndicator(self.right_bar, label="VELOCITY", value=self.velocity, unit="m/s", language=self.language)
@@ -202,6 +165,18 @@ class NaviDeck(ctk.CTk):
         else:
             frame = cv.imread("./_footage/3.webp")
             self.after(50, lambda: self.update_footage(frame))
+
+        # Mini map
+        self.minimap = MiniMapIndicator(self.cam_frame)
+        self.minimap.place(relx=0.99, rely=0.99, anchor="se", x=-10, y=-10)
+
+        self.cam_selector = CameraSelector(
+            self.cam_frame,
+            cameras=self.cams,
+            # on_change=self.handle_camera_change,   # opsiyonel
+        )
+        # Place the camera selector to the left of the minimap, top aligned (minimap is 250px tall, so Y is -260)
+        self.cam_selector.place(relx=0.99, rely=0.99, anchor="ne", x=-270, y=-260)
 
 # _____ LAST CALLS ___________________________________
 
@@ -297,6 +272,11 @@ class NaviDeck(ctk.CTk):
 
         self.cam_label.configure(image=ctk_img)
         self.cam_label.image = ctk_img
+
+    def handle_camera_change(self, cam: str):
+        print(f"Kamera değişti: {cam}")
+        # buraya kamera değiştirme mantığını yaz
+        # örn: self.video_stream.set_camera(cam)
 
     # ─── Clock ───────────────────────────────────────────────────────────────
 
