@@ -1,8 +1,10 @@
+import sys
 import customtkinter as ctk
 import ctypes
 from PIL import Image
 import cv2 as cv
 import datetime
+
 from indicators.battery_indicator import BatteryIndicator
 from indicators.warning_indicator import WarningIndicator
 from indicators.timer_indicator import TimerIndicator
@@ -15,16 +17,36 @@ from settings import SettingsPanel, LANGUAGES
 
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NaviDeck.app")
 
-
 LANGUAGES["English"].update({
     "selected":    "Selected",
     "footage1":    "Footage 1\nN25",
     "footage2":    "Footage 2\nMini ROV",
+    # Harita İndirici Çevirileri (İngilizce)
+    "map_dl_title": "Offline Map Downloader (Google Sat)",
+    "map_dl_tl":    "Top Left (Lat, Lng):",
+    "map_dl_br":    "Bottom Right (Lat, Lng):",
+    "map_dl_btn":   "Download Map",
+    "map_dl_wait":  "Status: Waiting",
+    "map_dl_ing":   "Status: Downloading... (No lag)",
+    "map_dl_ok":    "Status: Success! Saved.",
+    "map_dl_err":   "Status: Error!",
+    "map_dl_inv":   "Status: Invalid numbers!"
 })
+
 LANGUAGES["Türkçe"].update({
     "selected":    "Seçili",
     "footage1":    "Görüntü 1\nN25",
     "footage2":    "Görüntü 2\nMini ROV",
+    # Harita İndirici Çevirileri (Türkçe)
+    "map_dl_title": "Çevrimdışı Harita İndirici (Google Uydu)",
+    "map_dl_tl":    "Sol Üst (Lat, Lng):",
+    "map_dl_br":    "Sağ Alt (Lat, Lng):",
+    "map_dl_btn":   "Haritayı İndir",
+    "map_dl_wait":  "Durum: Bekleniyor",
+    "map_dl_ing":   "Durum: İndiriliyor... (Arayüz kasmaz)",
+    "map_dl_ok":    "Durum: Başarılı! Kaydedildi.",
+    "map_dl_err":   "Durum: Hata oluştu!",
+    "map_dl_inv":   "Durum: Geçersiz sayı formatı!"
 })
 
 
@@ -173,15 +195,19 @@ class NaviDeck(ctk.CTk):
         self.cam_selector = CameraSelector(
             self.cam_frame,
             cameras=self.cams,
-            # on_change=self.handle_camera_change,   # opsiyonel
         )
-        # Place the camera selector to the left of the minimap, top aligned (minimap is 250px tall, so Y is -260)
         self.cam_selector.place(relx=0.99, rely=0.99, anchor="ne", x=-270, y=-260)
+
+# _____ KEYBINDS _____________________________________
+
+        # ESC tuşuna basıldığında ayarlar sayfasını kapatır
+        self.bind("<Escape>", self.close_settings)
 
 # _____ LAST CALLS ___________________________________
 
         self.update_clock()
         self.control_warnings()
+
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -204,9 +230,10 @@ class NaviDeck(ctk.CTk):
         self.battery.set_language(self.language)
         self.timer.set_language(self.language)
 
-        self.footage_btn1.configure(text=self._s("footage1"))
-        self.footage_btn2.configure(text=self._s("footage2"))
-        self.footage_lbl.configure(text=f"{self._s('selected')}: {self.curr_footage}")
+        if hasattr(self, "footage_btn1"):
+            self.footage_btn1.configure(text=self._s("footage1"))
+            self.footage_btn2.configure(text=self._s("footage2"))
+            self.footage_lbl.configure(text=f"{self._s('selected')}: {self.curr_footage}")
 
         all_cards = [self.velocity_card, self.depht_card, self.yaw_card, self.roll_card, self.pitch_card]
         for card in all_cards:
@@ -231,6 +258,11 @@ class NaviDeck(ctk.CTk):
         self.settings_panel.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
         self.settings_panel.lift()
 
+    def close_settings(self, event=None):
+        """ESC tuşuna basıldığında ayarlar panelini kapatır."""
+        if hasattr(self, "settings_panel") and self.settings_panel.winfo_exists():
+            self.settings_panel.destroy()
+
     # ─── Footage ─────────────────────────────────────────────────────────────
 
     def select_footage(self, name):
@@ -243,7 +275,7 @@ class NaviDeck(ctk.CTk):
 
     # ─── Camera ──────────────────────────────────────────────────────────────
 
-    def update_footage(self, frame):
+    def update_footage(self, frame, mode="fit"):
         if frame is None:
             print("Frame okunamadı.")
             return
@@ -253,30 +285,46 @@ class NaviDeck(ctk.CTk):
         display_h = self.cam_frame.winfo_height()
 
         if display_w < 10 or display_h < 10:
-            self.after(50, lambda: self.update_footage(frame))
+            self.after(50, lambda: self.update_footage(frame, mode))
             return
 
-        # 1) Önce frame'i resize et
-        scale = min(display_w / frame_w, display_h / frame_h)
-        new_w = int(frame_w * scale)
-        new_h = int(frame_h * scale)
+        if mode == "fit":
+            scale = min(display_w / frame_w, display_h / frame_h)
+            new_w = int(frame_w * scale)
+            new_h = int(frame_h * scale)
+            
+            resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
 
-        resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
+        elif mode == "fill":
+            scale = max(display_w / frame_w, display_h / frame_h)
+            new_w = int(frame_w * scale)
+            new_h = int(frame_h * scale)
+            
+            resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
+            
+            start_y = (new_h - display_h) // 2
+            start_x = (new_w - display_w) // 2
+            
+            resized = resized[start_y:start_y + display_h, start_x:start_x + display_w]
+            
+            new_w, new_h = display_w, display_h
 
-        # 2) Sonra HUD'u resize edilmiş frame üzerine çiz
-        resized = self.stats.draw_roll(resized, self.roll)
+        else:
+            resized = frame # Fallback
 
-        resized = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
-        img     = Image.fromarray(resized)
+        if hasattr(self.stats, 'draw_roll'):
+            resized = self.stats.draw_roll(resized, self.roll)
+
+        resized_rgb = cv.cvtColor(resized, cv.COLOR_BGR2RGB)
+        img = Image.fromarray(resized_rgb)
+        
         ctk_img = ctk.CTkImage(light_image=img, size=(new_w, new_h))
 
         self.cam_label.configure(image=ctk_img)
-        self.cam_label.image = ctk_img
+        self.cam_label.image = ctk_img 
 
     def handle_camera_change(self, cam: str):
         print(f"Kamera değişti: {cam}")
-        # buraya kamera değiştirme mantığını yaz
-        # örn: self.video_stream.set_camera(cam)
 
     # ─── Clock ───────────────────────────────────────────────────────────────
 

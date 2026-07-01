@@ -2,7 +2,6 @@ import customtkinter as ctk
 
 class CameraSelector(ctk.CTkFrame):
     def __init__(self, master, cameras, on_change=None, **kwargs):
-        # We pop any unexpected kwargs like icons_dir if it was passed by older code
         kwargs.pop("icons_dir", None)
         
         super().__init__(master, fg_color="transparent", bg_color="transparent", **kwargs)
