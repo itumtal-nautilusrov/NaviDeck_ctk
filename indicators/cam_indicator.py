@@ -12,7 +12,7 @@ class CameraSelector(ctk.CTkFrame):
         self.seg_button = ctk.CTkSegmentedButton(
             self,
             values=self.cameras,
-            command=self._handle_change,
+            command=self.handle_camera_change,
             fg_color="#1a1a1a",
             selected_color="#333333",
             selected_hover_color="#444444",
@@ -26,6 +26,10 @@ class CameraSelector(ctk.CTkFrame):
         if self.cameras:
             self.seg_button.set(self.cameras[0])
             
-    def _handle_change(self, value):
+    def handle_camera_change(self, cam: str):
+        self.curr_footage = cam
+
         if self.on_change:
-            self.on_change(value)
+            self.on_change(cam)
+
+        print(f"[CAM] selected {cam}")

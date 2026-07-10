@@ -1,5 +1,6 @@
 import socket
 import cv2
+import numpy as np
 import pickle
 import struct
 
@@ -30,8 +31,7 @@ while True:
     frame_data = data[:msg_size]
     data = data[msg_size:]
 
-    buffer = pickle.loads(frame_data)
-
+    buffer = np.frombuffer(frame_data, dtype=np.uint8)
     frame = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
 
     cv2.imshow("ROV Camera", frame)

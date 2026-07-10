@@ -4,6 +4,7 @@ import ctypes
 from PIL import Image
 import cv2 as cv
 import datetime
+from threading import Thread
 
 from indicators.battery_indicator import BatteryIndicator
 from indicators.warning_indicator import WarningIndicator
@@ -13,15 +14,15 @@ from indicators.stats_indicator import StatsIndicator
 from indicators.cam_indicator import CameraSelector
 from indicators.map_indicator import MiniMapIndicator
 
+from client.ui_handler import UIHandler
+from client.main_client import TelemetryClient
+from client.serial_handler import SerialHandler
 from settings import SettingsPanel, LANGUAGES
 
 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("NaviDeck.app")
 
 LANGUAGES["English"].update({
     "selected":    "Selected",
-    "footage1":    "Footage 1\nN25",
-    "footage2":    "Footage 2\nMini ROV",
-    # Harita İndirici Çevirileri (İngilizce)
     "map_dl_title": "Offline Map Downloader (Google Sat)",
     "map_dl_tl":    "Top Left (Lat, Lng):",
     "map_dl_br":    "Bottom Right (Lat, Lng):",
@@ -35,9 +36,6 @@ LANGUAGES["English"].update({
 
 LANGUAGES["Türkçe"].update({
     "selected":    "Seçili",
-    "footage1":    "Görüntü 1\nN25",
-    "footage2":    "Görüntü 2\nMini ROV",
-    # Harita İndirici Çevirileri (Türkçe)
     "map_dl_title": "Çevrimdışı Harita İndirici (Google Uydu)",
     "map_dl_tl":    "Sol Üst (Lat, Lng):",
     "map_dl_br":    "Sağ Alt (Lat, Lng):",
@@ -56,6 +54,7 @@ class NaviDeck(ctk.CTk):
 
         self.language = "Türkçe"   # LANG
         self.cams = ["Sarıca", "Mini ROV"]
+        self.curr_footage = self.cams[0]
 
         self.iconbitmap("./_icons/main/nrt_logo.ico")
         self.title("NaviDeck")
@@ -81,13 +80,8 @@ class NaviDeck(ctk.CTk):
         )
 
         self.more_button = ctk.CTkButton(
-            self.top_bar,
-            width=75,
-            image=self.more_img,
-            text="",
-            fg_color="transparent",
-            hover=False,
-            command=self.open_settings
+            self.top_bar, width=75, image=self.more_img, text="",
+            fg_color="transparent", hover=False, command=self.open_settings
         )
         self.more_button.pack(side="right", padx=20, pady=20)
         self.more_button.bind("<Enter>", lambda e: self.config(cursor="hand2"))
@@ -96,23 +90,14 @@ class NaviDeck(ctk.CTk):
         ctk.CTkFrame(self.top_bar, fg_color="#393939", height=70, width=2).pack(side="right", padx=5, pady=22)
 
         self.battery = BatteryIndicator(
-            self.top_bar,
-            battery_percent=88,
-            minutes_left=95,
-            icons_dir="./_icons/main",
-            language=self.language,
-            fg_color="transparent",
-            border_width=2,
-            border_color="#3a3a3a",
-            corner_radius=12,
+            self.top_bar, battery_percent=88, minutes_left=95,
+            icons_dir="./_icons/main", language=self.language,
+            fg_color="transparent", border_width=2, border_color="#3a3a3a", corner_radius=12
         )
         self.battery.pack(side="right", anchor="center", padx=20, pady=22)
 
         self.warning = WarningIndicator(
-            self.top_bar,
-            warning_key="flawless",
-            language=self.language,
-            corner_radius=12
+            self.top_bar, warning_key="flawless", language=self.language, corner_radius=12
         )
         self.warning.pack(side="left", anchor="center", padx=20, pady=25)
 
@@ -123,10 +108,7 @@ class NaviDeck(ctk.CTk):
 
 # _____ RIGHT BAR ___________________________________
 
-        self.curr_footage = "N25"
-        self.footage_buttons = {}
-
-        self.right_bar = ctk.CTkFrame(self.main_frame, width=206, fg_color="#0f0f14", corner_radius=0)
+        self.right_bar = ctk.CTkFrame(self.main_frame, width=258, fg_color="#0f0f14", corner_radius=0)
         self.right_bar.pack(side="right", fill="y")
         self.right_bar.pack_propagate(False)
 
@@ -136,17 +118,12 @@ class NaviDeck(ctk.CTk):
         self.clock_lbl.pack(side="top", pady=10)
 
         self.timer = TimerIndicator(
-            self.right_bar,
-            language=self.language,
-            corner_radius=0,
-            border_width=0,
-            border_color="#393939",
-            fg_color="transparent"
+            self.right_bar, language=self.language, corner_radius=0,
+            border_width=0, border_color="#393939", fg_color="transparent"
         )
         self.timer.pack(side="top", pady=10)
 
         ctk.CTkFrame(self.right_bar, fg_color="#393939", height=2, width=186).pack(side="top", pady=5)        
-
         ctk.CTkFrame(self.right_bar, fg_color="#393939", width=186, height=2).pack(side="bottom", pady=5)
 
         self.velocity_card = StatsIndicator(self.right_bar, label="VELOCITY", value=self.velocity, unit="m/s", language=self.language)
@@ -164,20 +141,34 @@ class NaviDeck(ctk.CTk):
         self.pitch_card = StatsIndicator(self.right_bar, label="PITCH", value=self.pitch, unit="°", language=self.language)
         self.pitch_card.pack(anchor="center", pady=5)
 
+        self.log_frame = ctk.CTkFrame(self.right_bar, fg_color="#121218", corner_radius=12)
+        self.log_frame.pack(side="top", fill="both", expand=True, padx=10, pady=(10, 12))
+
+        self.log_title = ctk.CTkLabel(self.log_frame, text="CONNECTION LOG", font=("Segoe UI", 14, "bold"), text_color="#9ca3af")
+        self.log_title.pack(anchor="w", padx=10, pady=(8, 4))
+
+        self.log_box = ctk.CTkTextbox(
+            self.log_frame,
+            fg_color="#09090d",
+            text_color="#d1d5db",
+            border_width=1,
+            border_color="#2b2b35",
+            corner_radius=10,
+            wrap="word",
+        )
+        self.log_box.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.log_box.configure(state="disabled")
+
 # _____ CAM FRAME ___________________________________
 
         self.cam_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
         self.cam_frame.pack(side="left", fill="both", expand=True)
 
         self.no_cam_img = ctk.CTkImage(
-            light_image=Image.open("./_icons/main/nocam.png"),
-            size=(350, 350)
+            light_image=Image.open("./_icons/main/nocam.png"), size=(350, 350)
         )
 
-        self.cam_label = ctk.CTkLabel(
-            self.cam_frame, text="",
-            bg_color="transparent", fg_color="transparent"
-        )
+        self.cam_label = ctk.CTkLabel(self.cam_frame, text="", bg_color="transparent", fg_color="transparent")
         self.cam_label.place(relx=0, rely=0, relwidth=1, relheight=1)
 
         self.cam_running = True
@@ -188,26 +179,38 @@ class NaviDeck(ctk.CTk):
             frame = cv.imread("./_footage/3.webp")
             self.after(50, lambda: self.update_footage(frame))
 
-        # Mini map
         self.minimap = MiniMapIndicator(self.cam_frame)
         self.minimap.place(relx=0.99, rely=0.99, anchor="se", x=-10, y=-10)
 
+        # Kamera değişim fonksiyonunu direkt on_change parametresi ile bağlıyoruz
         self.cam_selector = CameraSelector(
             self.cam_frame,
             cameras=self.cams,
+            on_change=self.handle_camera_change 
         )
         self.cam_selector.place(relx=0.99, rely=0.99, anchor="ne", x=-270, y=-260)
 
+# _____ UI CMD _______________________________________
+
+        self.ui = UIHandler(logger=self.log_message)
+        self.serial_handler = SerialHandler()
+        self.serial_connection = self.serial_handler.get_serial_connection()
+        self.telemetry_client = TelemetryClient(on_sample=self.handle_telemetry_sample, log=self.log_message)
+
+        Thread(target=self.telemetry_client.run, daemon=True).start()
+        
+        self.ui.ui_command(f"footage {self.curr_footage}")
+        print(f"UI cmd sent: {self.ui.ui_cmd}")
+        print(f"Serial connection: {self.serial_connection.port if self.serial_connection else 'None'}")
+
 # _____ KEYBINDS _____________________________________
 
-        # ESC tuşuna basıldığında ayarlar sayfasını kapatır
         self.bind("<Escape>", self.close_settings)
 
 # _____ LAST CALLS ___________________________________
 
         self.update_clock()
         self.control_warnings()
-
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -230,11 +233,6 @@ class NaviDeck(ctk.CTk):
         self.battery.set_language(self.language)
         self.timer.set_language(self.language)
 
-        if hasattr(self, "footage_btn1"):
-            self.footage_btn1.configure(text=self._s("footage1"))
-            self.footage_btn2.configure(text=self._s("footage2"))
-            self.footage_lbl.configure(text=f"{self._s('selected')}: {self.curr_footage}")
-
         all_cards = [self.velocity_card, self.depht_card, self.yaw_card, self.roll_card, self.pitch_card]
         for card in all_cards:
             card.set_language(self.language)
@@ -250,28 +248,15 @@ class NaviDeck(ctk.CTk):
     def open_settings(self):
         if not hasattr(self, "settings_panel") or not self.settings_panel.winfo_exists():
             self.settings_panel = SettingsPanel(
-                self,
-                language=self.language,
-                on_language_change=self.apply_language
+                self, language=self.language, on_language_change=self.apply_language
             )
 
         self.settings_panel.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
         self.settings_panel.lift()
 
     def close_settings(self, event=None):
-        """ESC tuşuna basıldığında ayarlar panelini kapatır."""
         if hasattr(self, "settings_panel") and self.settings_panel.winfo_exists():
             self.settings_panel.destroy()
-
-    # ─── Footage ─────────────────────────────────────────────────────────────
-
-    def select_footage(self, name):
-        if not hasattr(self, "footage_lbl"):
-            return
-        self.curr_footage = name
-        self.footage_lbl.configure(text=f"{self._s('selected')}: {self.curr_footage}")
-        for key, btn in self.footage_buttons.items():
-            btn.configure(border_color="#00FFAA" if key == name else "#393939")
 
     # ─── Camera ──────────────────────────────────────────────────────────────
 
@@ -292,25 +277,20 @@ class NaviDeck(ctk.CTk):
             scale = min(display_w / frame_w, display_h / frame_h)
             new_w = int(frame_w * scale)
             new_h = int(frame_h * scale)
-            
             resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
 
         elif mode == "fill":
             scale = max(display_w / frame_w, display_h / frame_h)
             new_w = int(frame_w * scale)
             new_h = int(frame_h * scale)
-            
             resized = cv.resize(frame, (new_w, new_h), interpolation=cv.INTER_AREA)
             
             start_y = (new_h - display_h) // 2
             start_x = (new_w - display_w) // 2
-            
             resized = resized[start_y:start_y + display_h, start_x:start_x + display_w]
-            
             new_w, new_h = display_w, display_h
-
         else:
-            resized = frame # Fallback
+            resized = frame 
 
         if hasattr(self.stats, 'draw_roll'):
             resized = self.stats.draw_roll(resized, self.roll)
@@ -319,12 +299,44 @@ class NaviDeck(ctk.CTk):
         img = Image.fromarray(resized_rgb)
         
         ctk_img = ctk.CTkImage(light_image=img, size=(new_w, new_h))
-
         self.cam_label.configure(image=ctk_img)
         self.cam_label.image = ctk_img 
 
     def handle_camera_change(self, cam: str):
-        print(f"Kamera değişti: {cam}")
+        self.curr_footage = cam
+        self.ui.ui_command(f"footage {cam}")
+        print(f"UI cmd sent: {self.ui.ui_cmd}")
+
+    def handle_telemetry_sample(self, sample):
+        def apply_sample():
+            self.depht_card.set_value(sample.get("pressure", 0))
+            self.yaw_card.set_value(sample.get("yaw", 0))
+            self.roll_card.set_value(sample.get("roll", 0))
+            self.pitch_card.set_value(sample.get("pitch", 0))
+
+        if self.winfo_exists():
+            self.after(0, apply_sample)
+
+    def log_message(self, message):
+        if not self.winfo_exists() or not hasattr(self, "log_box"):
+            return
+
+        def append():
+            if not self.winfo_exists() or not hasattr(self, "log_box"):
+                return
+
+            self.log_box.configure(state="normal")
+            self.log_box.insert("end", message + "\n")
+            self.log_box.see("end")
+
+            lines = self.log_box.get("1.0", "end-1c").splitlines()
+            if len(lines) > 200:
+                keep_from = len(lines) - 200 + 1
+                self.log_box.delete("1.0", f"{keep_from}.0")
+
+            self.log_box.configure(state="disabled")
+
+        self.after(0, append)
 
     # ─── Clock ───────────────────────────────────────────────────────────────
 
