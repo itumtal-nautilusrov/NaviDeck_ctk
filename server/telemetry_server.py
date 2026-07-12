@@ -1,27 +1,25 @@
 from __future__ import annotations
 
 import json
-import random
 import socket
 import threading
 import time
 
+try:
+    from .runtime import FakeTelemetrySource
+except ImportError:  # pragma: no cover - direct script fallback
+    from runtime import FakeTelemetrySource
+
 class TelemetryStreamer:
-    def __init__(self, host="0.0.0.0", port=9998, interval=0.5):
+    def __init__(self, host="0.0.0.0", port=9998, interval=0.5, source=None):
         self.host = host
         self.port = port
         self.interval = interval
         self._stop_event = threading.Event()
+        self.source = source or FakeTelemetrySource()
 
     def generate_sample(self):
-        return {
-            "pressure": round(random.uniform(0.8, 3.6), 2),
-            "yaw": round(random.uniform(-180.0, 180.0), 2),
-            "roll": round(random.uniform(-90.0, 90.0), 2),
-            "pitch": round(random.uniform(-90.0, 90.0), 2),
-            "temperature_c": round(random.uniform(8.0, 28.0), 2),
-            "timestamp": time.time(),
-        }
+        return self.source.sample()
 
     def handle_client(self, conn, addr):
         print(f"[TELEMETRY] client connected: {addr}")
@@ -33,7 +31,7 @@ class TelemetryStreamer:
                     payload_text = json.dumps(payload) + "\n"
                     conn.sendall(payload_text.encode("utf-8"))
                     print(
-                        "[TELEMETRY] tx pressure={pressure} yaw={yaw} roll={roll} pitch={pitch} temp={temperature_c}C".format(
+                        "[TELEMETRY] tx depth={depth} velocity={velocity} yaw={yaw} roll={roll} pitch={pitch} temp_electroic={temp_electroic}C temp_battery={temp_battery}C battery_percent={battery_percent}%".format(
                             **payload
                         )
                     )
@@ -68,5 +66,5 @@ class TelemetryStreamer:
         self._stop_event.set()
 
 
-def start_telemetry_server(host="0.0.0.0", port=9998):
-    TelemetryStreamer(host=host, port=port).start_telemetry_server()
+def start_telemetry_server(host="0.0.0.0", port=9998, source=None):
+    TelemetryStreamer(host=host, port=port, source=source).start_telemetry_server()

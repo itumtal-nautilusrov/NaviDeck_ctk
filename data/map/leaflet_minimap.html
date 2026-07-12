@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NaviDeck Leaflet Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #111111;
+      font-family: Segoe UI, Arial, sans-serif;
+      user-select: none;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+      background: #111111;
+    }
+
+    .navideck-map-control {
+      background: rgba(15, 15, 20, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .navideck-map-control button {
+      display: block;
+      width: 40px;
+      height: 40px;
+      border: 0;
+      color: #f8fafc;
+      background: transparent;
+      font-size: 18px;
+      line-height: 40px;
+      cursor: pointer;
+    }
+
+    .navideck-map-control button:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .navideck-badge {
+      position: absolute;
+      left: 12px;
+      bottom: 12px;
+      z-index: 1000;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(15, 15, 20, 0.82);
+      color: #d1d5db;
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      display: none;
+      pointer-events: none;
+    }
+
+    .navideck-badge.visible {
+      display: inline-flex;
+    }
+
+    .navideck-waypoint-marker {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #0ea5e9;
+      border: 2px solid #f8fafc;
+      color: #f8fafc;
+      font-weight: 700;
+      font-size: 13px;
+      font-family: Segoe UI, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+      cursor: pointer;
+    }
+
+    .navideck-context-menu {
+      position: absolute;
+      z-index: 2000;
+      display: none;
+      min-width: 170px;
+      background: rgba(15, 15, 20, 0.97);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+
+    .navideck-context-menu button {
+      display: block;
+      width: 100%;
+      padding: 10px 14px;
+      border: 0;
+      background: transparent;
+      color: #f8fafc;
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .navideck-context-menu button:hover {
+      background: rgba(14, 165, 233, 0.2);
+    }
+
+    .navideck-context-menu button + button {
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="offline-badge" class="navideck-badge">Offline mode</div>
+  <div id="ctx-menu" class="navideck-context-menu">
+    <button type="button" data-action="add">Add Waypoint</button>
+    <button type="button" data-action="refresh">Refresh (back to start)</button>
+  </div>
+  <script>
+    const map = L.map('map', {
+      zoomControl: false,
+      attributionControl: false,
+      preferCanvas: true
+    }).setView([41.0082, 28.9784], 15);
+
+    let tileLayer = null;
+    let waypointMode = false;
+    let waypoints = []; // { number, lat, lng, timestamp, marker }
+    let ctxLatLng = null;
+
+    const ctxMenu = document.getElementById('ctx-menu');
+
+    function applyTileLayer(url, maxZoom) {
+      if (tileLayer) {
+        tileLayer.remove();
+      }
+
+      tileLayer = L.tileLayer(url, {
+        maxZoom: maxZoom,
+        crossOrigin: true
+      });
+
+      tileLayer.addTo(map);
+    }
+
+    function setOfflineMode(enabled) {
+      document.getElementById('offline-badge').classList.toggle('visible', Boolean(enabled));
+    }
+
+    function setMapZoom(value) {
+      const numericZoom = Number(value);
+      if (!Number.isNaN(numericZoom)) {
+        map.setZoom(numericZoom);
+      }
+    }
+
+    function setMapPosition(lat, lng) {
+      const numericLat = Number(lat);
+      const numericLng = Number(lng);
+      if (!Number.isNaN(numericLat) && !Number.isNaN(numericLng)) {
+        map.setView([numericLat, numericLng], map.getZoom(), { animate: false });
+      }
+    }
+
+    function setMapTileServer(url, maxZoom) {
+      applyTileLayer(String(url), Number(maxZoom) || 20);
+    }
+
+    // Waypoints -----------------------------------------------------------
+
+    function setWaypointMode(enabled) {
+      waypointMode = Boolean(enabled);
+      if (!waypointMode) hideContextMenu();
+    }
+
+    function makeWaypointIcon(number) {
+      return L.divIcon({
+        className: '',
+        html: '<div class="navideck-waypoint-marker">' + number + '</div>',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+    }
+
+    function renumberAndRedraw() {
+      waypoints.forEach(function (w, idx) {
+        w.number = idx + 1;
+        w.marker.setIcon(makeWaypointIcon(w.number));
+      });
+    }
+
+    function syncWaypoints() {
+      if (window.pywebview && window.pywebview.api) {
+        const payload = waypoints.map(function (w) {
+          return { number: w.number, lat: w.lat, lng: w.lng, timestamp: w.timestamp };
+        });
+        window.pywebview.api.save_waypoints(JSON.stringify(payload));
+      }
+    }
+
+    function removeWaypoint(entry) {
+      map.removeLayer(entry.marker);
+      const idx = waypoints.indexOf(entry);
+      if (idx !== -1) waypoints.splice(idx, 1);
+      renumberAndRedraw();
+      syncWaypoints();
+    }
+
+    function addWaypointAt(latlng) {
+      const entry = {
+        lat: latlng.lat,
+        lng: latlng.lng,
+        timestamp: new Date().toISOString(),
+        number: waypoints.length + 1
+      };
+
+      const marker = L.marker(latlng, { icon: makeWaypointIcon(entry.number) }).addTo(map);
+      entry.marker = marker;
+
+      marker.on('click', function (evt) {
+        L.DomEvent.stopPropagation(evt);
+        removeWaypoint(entry);
+      });
+
+      waypoints.push(entry);
+      syncWaypoints();
+    }
+
+    function rewindWaypoint() {
+      if (waypoints.length === 0) return;
+      removeWaypoint(waypoints[waypoints.length - 1]);
+    }
+
+    function clearWaypoints() {
+      waypoints.forEach(function (w) { map.removeLayer(w.marker); });
+      waypoints = [];
+      syncWaypoints();
+    }
+
+    // Context menu (right click) ------------------------------------------
+
+    function hideContextMenu() {
+      ctxMenu.style.display = 'none';
+      ctxLatLng = null;
+    }
+
+    function showContextMenu(point, latlng) {
+      ctxLatLng = latlng;
+      const menuWidth = 170;
+      const menuHeight = 90;
+      const maxX = Math.max(0, window.innerWidth - menuWidth - 4);
+      const maxY = Math.max(0, window.innerHeight - menuHeight - 4);
+      ctxMenu.style.left = Math.min(point.x, maxX) + 'px';
+      ctxMenu.style.top = Math.min(point.y, maxY) + 'px';
+      ctxMenu.style.display = 'block';
+    }
+
+    map.on('contextmenu', function (e) {
+      L.DomEvent.preventDefault(e);
+      if (!waypointMode) return;
+      showContextMenu(e.containerPoint, e.latlng);
+    });
+
+    map.on('click movestart zoomstart', hideContextMenu);
+    document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    ctxMenu.addEventListener('click', function (e) {
+      const action = e.target.getAttribute('data-action');
+      if (action === 'add' && ctxLatLng) {
+        addWaypointAt(ctxLatLng);
+      } else if (action === 'refresh') {
+        map.setView([41.0082, 28.9784], 15, { animate: false });
+      }
+      hideContextMenu();
+    });
+
+    // Controls -----------------------------------------------------------
+
+    const control = L.control({ position: 'topright' });
+    control.onAdd = function() {
+      const container = L.DomUtil.create('div', 'navideck-map-control leaflet-bar');
+      container.innerHTML = [
+        '<button type="button" title="Zoom in" aria-label="Zoom in">+</button>',
+        '<button type="button" title="Zoom out" aria-label="Zoom out">-</button>',
+        '<button type="button" title="Rewind last waypoint" aria-label="Rewind">⟲</button>',
+        '<button type="button" title="Fullscreen" aria-label="Fullscreen">⛶</button>'
+      ].join('');
+
+      const buttons = container.querySelectorAll('button');
+      buttons[0].onclick = () => map.zoomIn();
+      buttons[1].onclick = () => map.zoomOut();
+      buttons[2].onclick = () => rewindWaypoint();
+      // This no longer makes the *child* webview window go OS-fullscreen
+      // (that used to detach it from the app and look like a stray window).
+      // It just asks the parent app to toggle the widget's fullscreen state;
+      // the parent then resizes/repositions this window to match.
+      buttons[3].onclick = () => window.pywebview.api.toggle_fullscreen();
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.disableScrollPropagation(container);
+      return container;
+    };
+    control.addTo(map);
+
+    applyTileLayer("https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}", 20);
+    setOfflineMode(false);
+
+    window.navideckMap = {
+      setOfflineMode,
+      setMapZoom,
+      setMapPosition,
+      setMapTileServer,
+      setWaypointMode,
+      clearWaypoints,
+      rewindWaypoint
+    };
+  </script>
+</body>
+</html>

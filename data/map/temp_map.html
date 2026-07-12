@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>NaviDeck Leaflet Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --ctrl-btn-size: 28px;
+      --ctrl-font-size: 14px;
+      --marker-size: 24px;
+    }
+    html, body {
+      width: 100%; height: 100%; margin: 0; overflow: hidden;
+      background: #111111; font-family: 'Segoe UI', sans-serif;
+    }
+    #map { position: absolute; inset: 0; background: #111111; }
+
+    /* Custom Controls Styling */
+    .navideck-map-control {
+      background: rgba(15, 15, 20, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .navideck-map-control button {
+      width: var(--ctrl-btn-size);
+      height: var(--ctrl-btn-size);
+      border: 0;
+      color: #f8fafc;
+      background: transparent;
+      font-size: var(--ctrl-font-size);
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      transition: background 0.2s;
+    }
+    .navideck-map-control button:hover { background: rgba(255, 255, 255, 0.1); }
+    .navideck-map-control button:last-child { border-bottom: none; }
+
+    /* Waypoint Markers */
+    .navideck-waypoint-marker {
+      width: var(--marker-size);
+      height: var(--marker-size);
+      border-radius: 50%;
+      background: #0ea5e9;
+      border: 2px solid #fff;
+      color: white;
+      font-weight: bold;
+      font-size: calc(var(--marker-size) * 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = L.map('map', { 
+        zoomControl: false, 
+        attributionControl: false 
+    }).setView([41.0082, 28.9784], 15);
+
+    let tileLayer = L.tileLayer("https://mt0.google.com/vt/lyrs=s&hl=en&x={x}&y={y}&z={z}", { maxZoom: 19 }).addTo(map);
+
+    // Dynamic Scaling Logic
+    function setMapUIScale(isFullscreen) {
+        const root = document.documentElement;
+        if (isFullscreen) {
+            root.style.setProperty('--ctrl-btn-size', '44px');
+            root.style.setProperty('--ctrl-font-size', '20px');
+            root.style.setProperty('--marker-size', '32px');
+        } else {
+            root.style.setProperty('--ctrl-btn-size', '28px');
+            root.style.setProperty('--ctrl-font-size', '14px');
+            root.style.setProperty('--marker-size', '24px');
+        }
+    }
+
+    // Controls
+    const control = L.control({ position: 'topright' });
+    control.onAdd = function() {
+      const div = L.DomUtil.create('div', 'navideck-map-control');
+      div.innerHTML = `
+        <button onclick="map.zoomIn()">+</button>
+        <button onclick="map.zoomOut()">-</button>
+        <button onclick="window.pywebview.api.toggle_fullscreen()">⛶</button>
+      `;
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    control.addTo(map);
+
+    // Public API for Python
+    window.navideckMap = {
+      setUIScale: setMapUIScale,
+      setZoom: (v) => map.setZoom(v),
+      setPosition: (lat, lng) => map.setView([lat, lng]),
+      setWaypointMode: (enabled) => { /* implementation */ }
+    };
+  </script>
+</body>
+</html>

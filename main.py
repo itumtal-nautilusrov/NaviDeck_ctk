@@ -1,4 +1,5 @@
 import sys
+import json
 import customtkinter as ctk
 import ctypes
 from PIL import Image
@@ -13,6 +14,7 @@ from indicators.hud_indicator import HUDIndicator
 from indicators.stats_indicator import StatsIndicator
 from indicators.cam_indicator import CameraSelector
 from indicators.map_indicator import MiniMapIndicator
+from indicators.temp_stack_indicator import TempStackIndicator
 
 from client.ui_handler import UIHandler
 from client.main_client import TelemetryClient
@@ -159,6 +161,21 @@ class NaviDeck(ctk.CTk):
         self.log_box.pack(fill="both", expand=True, padx=8, pady=(0, 8))
         self.log_box.configure(state="disabled")
 
+        self.server_ctl_row = ctk.CTkFrame(self.log_frame, fg_color="transparent")
+        self.server_ctl_row.pack(fill="x", padx=8, pady=(0, 8))
+
+        self.server_connected = True
+
+        self.server_toggle_btn = ctk.CTkButton(
+            self.server_ctl_row,
+            text="Connect",
+            height=32,
+            fg_color="#0ea5e9",
+            hover_color="#0284c7",
+            command=self.toggle_server_connection,
+        )
+        self.server_toggle_btn.pack(side="left", fill="x", expand=True)
+
 # _____ CAM FRAME ___________________________________
 
         self.cam_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
@@ -179,7 +196,10 @@ class NaviDeck(ctk.CTk):
             frame = cv.imread("./_footage/3.webp")
             self.after(50, lambda: self.update_footage(frame))
 
-        self.minimap = MiniMapIndicator(self.cam_frame)
+        self.minimap = MiniMapIndicator(
+            self.cam_frame,
+            on_waypoints_changed=self.handle_waypoints_changed,
+        )
         self.minimap.place(relx=0.99, rely=0.99, anchor="se", x=-10, y=-10)
 
         # Kamera değişim fonksiyonunu direkt on_change parametresi ile bağlıyoruz
@@ -189,6 +209,9 @@ class NaviDeck(ctk.CTk):
             on_change=self.handle_camera_change 
         )
         self.cam_selector.place(relx=0.99, rely=0.99, anchor="ne", x=-270, y=-260)
+
+        self.temp_stack = TempStackIndicator(self.cam_frame, language=self.language)
+        self.temp_stack.place(relx=0.99, rely=0.99, anchor="se", x=-270, y=-10)
 
 # _____ UI CMD _______________________________________
 
@@ -200,6 +223,7 @@ class NaviDeck(ctk.CTk):
         Thread(target=self.telemetry_client.run, daemon=True).start()
         
         self.ui.ui_command(f"footage {self.curr_footage}")
+        self.send_waypoints("sync")
         print(f"UI cmd sent: {self.ui.ui_cmd}")
         print(f"Serial connection: {self.serial_connection.port if self.serial_connection else 'None'}")
 
@@ -211,6 +235,7 @@ class NaviDeck(ctk.CTk):
 
         self.update_clock()
         self.control_warnings()
+        self._refresh_ui_labels()
 
     # ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -232,6 +257,9 @@ class NaviDeck(ctk.CTk):
         self.warning.set_language(self.language)
         self.battery.set_language(self.language)
         self.timer.set_language(self.language)
+        self.temp_stack.set_language(self.language)
+        self.log_title.configure(text=self._s("connection_log_title"))
+        self._refresh_server_toggle_btn()
 
         all_cards = [self.velocity_card, self.depht_card, self.yaw_card, self.roll_card, self.pitch_card]
         for card in all_cards:
@@ -248,7 +276,10 @@ class NaviDeck(ctk.CTk):
     def open_settings(self):
         if not hasattr(self, "settings_panel") or not self.settings_panel.winfo_exists():
             self.settings_panel = SettingsPanel(
-                self, language=self.language, on_language_change=self.apply_language
+                self,
+                language=self.language,
+                on_language_change=self.apply_language,
+                on_map_offline_change=self.set_map_offline_mode,
             )
 
         self.settings_panel.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
@@ -257,6 +288,10 @@ class NaviDeck(ctk.CTk):
     def close_settings(self, event=None):
         if hasattr(self, "settings_panel") and self.settings_panel.winfo_exists():
             self.settings_panel.destroy()
+
+    def set_map_offline_mode(self, enabled):
+        self.minimap.set_offline_mode(enabled)
+        self.log_message(f"[MAP] offline mode {'enabled' if enabled else 'disabled'}")
 
     # ─── Camera ──────────────────────────────────────────────────────────────
 
@@ -307,12 +342,85 @@ class NaviDeck(ctk.CTk):
         self.ui.ui_command(f"footage {cam}")
         print(f"UI cmd sent: {self.ui.ui_cmd}")
 
+    # ─── Map / route commands ────────────────────────────────────────────
+
+    def handle_waypoints_changed(self, action, waypoints):
+        """Receive map changes and forward the complete route to the command socket."""
+        self.send_waypoints(action, waypoints)
+
+    def send_waypoints(self, action="sync", waypoints=None):
+        """Send a newline-delimited UI command understood by the command server.
+
+        The payload is a complete route snapshot, so a reconnect or a dropped
+        individual update cannot leave the remote side with stale waypoints.
+        """
+        if waypoints is None:
+            waypoints = [
+                {"number": index + 1, "lat": waypoint["lat"], "lng": waypoint["lng"]}
+                for index, waypoint in enumerate(self.minimap.waypoint_data)
+            ]
+
+        payload = json.dumps(
+            {"action": action, "waypoints": waypoints},
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        self.ui.ui_command(f"waypoints {payload}")
+
+    def connect_server(self):
+        self.ui.set_enabled(True)
+        self.telemetry_client.set_enabled(True)
+        if self.ui.connect():
+            self.log_message("[UI] manual connect OK")
+            self.ui.ui_command(f"footage {self.curr_footage}")
+            self.send_waypoints("sync")
+            self.server_connected = True
+        else:
+            self.log_message("[UI] manual connect failed")
+            self.server_connected = False
+
+        self._refresh_server_toggle_btn()
+
+    def disconnect_server(self):
+        self.ui.set_enabled(False)
+        self.ui.close()
+        self.telemetry_client.set_enabled(False)
+        self.log_message("[UI] manually disconnected")
+        self.server_connected = False
+        self._refresh_server_toggle_btn()
+
+    def toggle_server_connection(self):
+        if self.server_connected:
+            self.disconnect_server()
+        else:
+            self.connect_server()
+
+    def _refresh_server_toggle_btn(self):
+        if self.server_connected:
+            self.server_toggle_btn.configure(
+                text=self._s("server_disconnect"),
+                fg_color="#374151",
+                hover_color="#1f2937",
+            )
+        else:
+            self.server_toggle_btn.configure(
+                text=self._s("server_connect"),
+                fg_color="#0ea5e9",
+                hover_color="#0284c7",
+            )
+
     def handle_telemetry_sample(self, sample):
         def apply_sample():
-            self.depht_card.set_value(sample.get("pressure", 0))
+            self.depht_card.set_value(sample.get("depth", sample.get("pressure", 0)))
+            self.velocity_card.set_value(sample.get("velocity", 0))
             self.yaw_card.set_value(sample.get("yaw", 0))
             self.roll_card.set_value(sample.get("roll", 0))
             self.pitch_card.set_value(sample.get("pitch", 0))
+            self.temp_stack.set_values(
+                sample.get("temp_electroic", sample.get("temp_electroics", 0)),
+                sample.get("temp_battery", 0),
+            )
+            self.battery.set_percent(sample.get("battery_percent", self.battery.percent))
 
         if self.winfo_exists():
             self.after(0, apply_sample)

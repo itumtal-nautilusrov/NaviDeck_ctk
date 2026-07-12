@@ -32,39 +32,51 @@ class CameraStreamer:
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server_socket.bind((self.host, self.port))
         server_socket.listen(1)
+        server_socket.settimeout(1.0)
 
-        print("Waiting for laptop...")
-
-        conn, addr = server_socket.accept()
-        print("Connected:", addr)
+        print(f"[CAMERA] listening on {self.host}:{self.port}")
 
         while True:
+            try:
+                conn, addr = server_socket.accept()
+            except socket.timeout:
+                continue
 
-            if self.cap.isOpened():
-                ret, frame = self.cap.read()
-            else:
-                ret, frame = False, None
+            print(f"[CAMERA] client connected: {addr}")
 
-            if not ret or frame is None:
-                frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
-                cv2.putText(
-                    frame,
-                    "NO CAMERA DEVICE",
-                    (40, target_height // 2),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1.0,
-                    (0, 0, 255),
-                    2,
-                    cv2.LINE_AA,
-                )
+            with conn:
+                while True:
 
-            _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+                    if self.cap.isOpened():
+                        ret, frame = self.cap.read()
+                    else:
+                        ret, frame = False, None
 
-            data = buffer.tobytes()
+                    if not ret or frame is None:
+                        frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+                        cv2.putText(
+                            frame,
+                            "NO CAMERA DEVICE",
+                            (40, target_height // 2),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                            cv2.LINE_AA,
+                        )
 
-            message = struct.pack("Q", len(data)) + data
-            
-            conn.sendall(message)
+                    _, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+
+                    data = buffer.tobytes()
+
+                    message = struct.pack("Q", len(data)) + data
+
+                    try:
+                        conn.sendall(message)
+                    except OSError:
+                        break
+
+            print(f"[CAMERA] client disconnected: {addr}")
     
     def stop_streaming(self):
         if self.cap is not None:

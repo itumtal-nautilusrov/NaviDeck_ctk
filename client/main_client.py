@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 from threading import Event
 
@@ -11,12 +12,14 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 
 class TelemetryClient:
-    def __init__(self, host="127.0.0.1", port=9998, timeout=5.0, on_sample=None, log=print):
-        self.host = host
-        self.port = port
+    def __init__(self, host=None, port=None, timeout=5.0, on_sample=None, log=print):
+        self.host = host or os.getenv("NAVIDECK_HOST", "127.0.0.1")
+        self.port = int(port or os.getenv("NAVIDECK_TELEMETRY_PORT", "9998"))
         self.timeout = timeout
         self.on_sample = on_sample
         self.log = log
+        self._enabled = True
+        self._socket = None
 
     def _log(self, message):
         if self.log:
@@ -24,14 +27,23 @@ class TelemetryClient:
 
     def run(self):
         while True:
+            if not self._enabled:
+                Event().wait(0.2)
+                continue
+
             try:
                 with socket.create_connection((self.host, self.port), timeout=self.timeout) as conn:
-                    conn.settimeout(self.timeout)
+                    self._socket = conn
+                    conn.settimeout(0.5)
                     self._log(f"[TELEMETRY] connected to {self.host}:{self.port}")
                     buffer = ""
 
-                    while True:
-                        chunk = conn.recv(4096)
+                    while self._enabled:
+                        try:
+                            chunk = conn.recv(4096)
+                        except socket.timeout:
+                            continue
+
                         if not chunk:
                             self._log("[TELEMETRY] server closed the connection")
                             break
@@ -51,16 +63,49 @@ class TelemetryClient:
                                 continue
 
                             self._log(
-                                "[TELEMETRY] pressure={pressure} yaw={yaw} roll={roll} pitch={pitch} temp={temperature_c}C".format(
-                                    **payload
+                                "[TELEMETRY] depth={depth} velocity={velocity} yaw={yaw} roll={roll} pitch={pitch} temp_electroic={temp_electroic}C temp_battery={temp_battery}C battery_percent={battery_percent}%".format(
+                                    depth=payload.get("depth", payload.get("pressure", 0)),
+                                    velocity=payload.get("velocity", 0),
+                                    yaw=payload.get("yaw", 0),
+                                    roll=payload.get("roll", 0),
+                                    pitch=payload.get("pitch", 0),
+                                    temp_electroic=payload.get("temp_electroic", payload.get("temp_electroics", payload.get("temperature_c", 0))),
+                                    temp_battery=payload.get("temp_battery", 0),
+                                    battery_percent=payload.get("battery_percent", 0),
                                 )
                             )
                             if self.on_sample:
                                 self.on_sample(payload)
 
+                    if not self._enabled:
+                        self._log("[TELEMETRY] paused")
+
             except OSError as exc:
-                self._log(f"[TELEMETRY] waiting for server: {exc}")
-                Event().wait(1)
+                if self._enabled:
+                    self._log(f"[TELEMETRY] waiting for server: {exc}")
+                    Event().wait(1)
+            finally:
+                self._socket = None
+
+    def set_enabled(self, enabled: bool):
+        self._enabled = bool(enabled)
+        if not self._enabled:
+            self.close()
+
+    def close(self):
+        if self._socket is None:
+            return
+
+        try:
+            self._socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        finally:
+            try:
+                self._socket.close()
+            except OSError:
+                pass
+            self._socket = None
 
 
 def main_client():
